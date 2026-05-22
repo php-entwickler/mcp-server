@@ -103,7 +103,7 @@ Once configured, your LLM will automatically call the right tool:
 ## Issues & contact
 
 - Bugs / feature requests: open a GitHub issue
-- Commercial integration / higher limits: [kontakt@php-entwickler.de](mailto:kontakt@php-entwickler.de)
+- Commercial integration / higher limits: [support@php-entwickler.de](mailto:support@php-entwickler.de)
 - General: [php-entwickler.de/kontakt](https://www.php-entwickler.de/kontakt)
 
 ## About
