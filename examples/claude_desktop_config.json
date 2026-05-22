@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "php-entwickler": {
+      "type": "http",
+      "url": "https://mcp.php-entwickler.de"
+    }
+  }
+}
