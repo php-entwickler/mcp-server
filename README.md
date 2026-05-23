@@ -56,6 +56,107 @@ Restart Claude Desktop.
 - **Type:** `http`
 - **URL:** `https://mcp.php-entwickler.de`
 
+### Windsurf (Codeium)
+In `~/.codeium/windsurf/mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "php-entwickler": { "serverUrl": "https://mcp.php-entwickler.de" }
+  }
+}
+```
+
+### Continue.dev (VS Code / JetBrains)
+In `~/.continue/config.json`:
+```json
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "transport": {
+          "type": "streamable-http",
+          "url": "https://mcp.php-entwickler.de"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Cline / Roo Code (VS Code)
+Cline → ⚙️ → **MCP Servers** → **Edit MCP Settings**:
+```json
+{
+  "mcpServers": {
+    "php-entwickler": {
+      "url": "https://mcp.php-entwickler.de",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+### Zed Editor
+In `~/.config/zed/settings.json`:
+```json
+{
+  "context_servers": {
+    "php-entwickler": { "url": "https://mcp.php-entwickler.de" }
+  }
+}
+```
+
+### Anthropic Messages API (direkt im eigenen Code)
+Mit dem offiziellen Anthropic SDK (Python/TypeScript) lässt sich der MCP-Server als `mcp_servers`-Parameter übergeben — Claude verbindet sich automatisch.
+
+**Python** (`pip install anthropic`):
+```python
+client.beta.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    mcp_servers=[{"type": "url", "url": "https://mcp.php-entwickler.de", "name": "php-entwickler"}],
+    messages=[{"role": "user", "content": "Welche Senior-Laravel-Jobs in Berlin?"}],
+    extra_headers={"anthropic-beta": "mcp-client-2025-04-04"},
+)
+```
+
+Full demo → [`examples/anthropic_api.py`](./examples/anthropic_api.py) · [`examples/anthropic_api.ts`](./examples/anthropic_api.ts)
+
+### Laravel (Prism + Prism Relay)
+Native MCP-Integration via [Prism](https://prismphp.com/) + [Relay](https://github.com/prism-php/relay):
+```bash
+composer require prism-php/prism prism-php/relay
+php artisan vendor:publish --tag="relay-config"
+```
+`config/relay.php`:
+```php
+'servers' => [
+    'php-entwickler' => [
+        'url' => 'https://mcp.php-entwickler.de',
+        'timeout' => 30,
+        'transport' => \Prism\Relay\Enums\Transport::Http,
+    ],
+],
+```
+```php
+$response = Prism::text()
+    ->using(Provider::Anthropic, 'claude-sonnet-4-6')
+    ->withPrompt('Senior-Symfony-Jobs in München?')
+    ->withTools(Relay::tools('php-entwickler'))
+    ->asText();
+```
+Vollständiges Beispiel (inkl. Laravel AI offiziell, CV-Match-Endpoint) → [`examples/laravel_integration.php`](./examples/laravel_integration.php)
+
+### Symfony
+Anthropic SDK + `mcp_servers` direkt — voll funktionsfähig ohne separates AI-Bundle. Vollständiges Beispiel mit Controller + RateLimit + Validation → [`examples/symfony_integration.php`](./examples/symfony_integration.php)
+
+### WordPress
+Shortcode `[php_entwickler_jobs skill="Laravel" city="Berlin"]` + REST-API + Cron — komplettes Plugin-Snippet → [`examples/wordpress_integration.php`](./examples/wordpress_integration.php)
+
+### OpenAI / Gemini (kein nativer MCP-Support)
+MCP-Tools via `tools/list` abrufen, Schemas zu Function-Calling konvertieren, dann eigenes Roundtripping. Pseudo-Code-Skizze ist im Setup-Guide weiter unten.
+
 ### Direct HTTP (curl / programmatic)
 ```bash
 curl -X POST https://mcp.php-entwickler.de \
@@ -87,7 +188,28 @@ curl -X POST https://mcp.php-entwickler.de \
   }'
 ```
 
-More examples in [`examples/`](./examples).
+## All examples at a glance
+
+| File | Language / Framework |
+|---|---|
+| [`curl.sh`](./examples/curl.sh) | Shell (10 ready-to-run curl calls) |
+| [`python_client.py`](./examples/python_client.py) | Python (pure HTTP) |
+| [`typescript_client.ts`](./examples/typescript_client.ts) | TypeScript / Node.js (built-in fetch) |
+| [`php_client.php`](./examples/php_client.php) | PHP 8.1+ (pure curl) |
+| [`go_client.go`](./examples/go_client.go) | Go (net/http) |
+| [`rust_client.rs`](./examples/rust_client.rs) | Rust (reqwest + tokio) |
+| [`anthropic_api.py`](./examples/anthropic_api.py) | Python · Anthropic SDK with `mcp_servers` |
+| [`anthropic_api.ts`](./examples/anthropic_api.ts) | TypeScript · Anthropic SDK with `mcp_servers` |
+| [`laravel_integration.php`](./examples/laravel_integration.php) | Laravel · Laravel AI / Prism Relay / Anthropic SDK |
+| [`symfony_integration.php`](./examples/symfony_integration.php) | Symfony · Controller + RateLimit + Validation |
+| [`wordpress_integration.php`](./examples/wordpress_integration.php) | WordPress · Plugin-Snippet (Shortcode + REST + Cron) |
+| [`claude_desktop_config.json`](./examples/claude_desktop_config.json) | Claude Desktop config |
+
+**Integration-Reihenfolge pro Use-Case:**
+
+1. **„Ich will MCP einfach in meinem LLM-Chat-Client nutzen"** → siehe Setup-Sektion oben (Claude Desktop / Cursor / Windsurf / Continue / Cline / Zed)
+2. **„Ich baue einen LLM-Service in eigener App"** → Anthropic SDK mit `mcp_servers` (Python/TS) oder Laravel AI / Prism Relay (PHP)
+3. **„Ich brauche nur strukturierte Job-Daten, ohne LLM"** → Pure-HTTP-Beispiele (`*_client.{ts,py,php,go,rs}`)
 
 ## Example prompts that trigger tool calls
 
