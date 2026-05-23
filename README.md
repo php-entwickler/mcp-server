@@ -5,7 +5,8 @@
 [![MCP Endpoint](https://img.shields.io/badge/MCP-mcp.php--entwickler.de-blue)](https://mcp.php-entwickler.de)
 [![Protocol Version](https://img.shields.io/badge/Protocol-2025--06--18-green)]()
 [![Transport](https://img.shields.io/badge/Transport-Streamable%20HTTP-orange)]()
-[![Region](https://img.shields.io/badge/Region-DACH%20only-yellow)]()
+[![Tools](https://img.shields.io/badge/Tools-5-violet)]()
+[![License](https://img.shields.io/badge/Data%20License-Attribution%20required-yellow)](https://www.php-entwickler.de/mcp/nutzungsbedingungen)
 
 ## What is this?
 
@@ -17,18 +18,15 @@ Instead of asking your LLM to browse the web, your LLM can call typed tools that
 
 ## Available tools
 
-Currently active (MVP):
-
 | Tool | Description |
 |---|---|
-| `search_jobs` | Search active PHP/Laravel/Symfony/WordPress/Shopware/TYPO3/Magento/Drupal jobs in Germany. Filters: tech, city, experience level, work model (remote/hybrid/onsite), minimum salary. |
+| `search_jobs` | Search active PHP/Laravel/Symfony/WordPress/Shopware/TYPO3/Magento/Drupal jobs in Germany. Filters: skill, city, experience, remote model, salary. **Automatic radius expansion 10 → 20 → 30 → 50 km** for cities with no direct matches. |
 | `get_job` | Get full details of a single job (description, requirements, benefits, skills, salary, application URL). |
+| `match_profile` | CV-based matching — pass `skills[]`, `experience_years`, optional location + remote + salary, get jobs sorted by match score (0–100) with `matched_skills` and `missing_skills` per job. Ideal when a user uploads their resume. |
+| `similar_jobs` | Find jobs similar to a reference job ID via MoreLikeThis search over title, skills and description. |
+| `market_insights` | Market analysis for a skill — total active jobs, top cities, salary by experience level, remote distribution, top premium (verified/claimed) employers. |
 
-**Coming soon** (data quality + opt-in policy work in progress):
-
-- `get_salary_range` — aggregated junior/mid/senior salary ranges per framework. Currently disabled until we ship our dedicated salary data source.
-- `top_companies_hiring` — top employers per tech stack and city. Disabled until we publish only claimed/verified company profiles (opt-in via [/fuer-arbeitgeber](https://www.php-entwickler.de/fuer-arbeitgeber)).
-- `compare_cities` — city-by-city comparison of jobs and salary spread. Depends on `get_salary_range`.
+All responses include German display labels (`experience_label`, `remote_label`) alongside the programmatic codes (`experience`, `remote`).
 
 ## Setup
 
@@ -66,6 +64,29 @@ curl -X POST https://mcp.php-entwickler.de \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
+### CV-Match example
+```bash
+curl -X POST https://mcp.php-entwickler.de \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: your-app/1.0" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "match_profile",
+      "arguments": {
+        "skills": ["PHP", "Symfony", "Doctrine", "Docker", "AWS"],
+        "experience_years": 6,
+        "city": "Muenchen",
+        "remote": "hybrid",
+        "salary_min": 70000,
+        "limit": 5
+      }
+    }
+  }'
+```
+
 More examples in [`examples/`](./examples).
 
 ## Example prompts that trigger tool calls
@@ -73,45 +94,72 @@ More examples in [`examples/`](./examples).
 Once configured, your LLM will automatically call the right tool:
 
 - *„Welche Senior-Laravel-Jobs gibt es in Berlin mit mindestens 80 k €?"* → `search_jobs`
-- *„Zeig mir 5 Remote-Symfony-Stellen, sortiert nach Aktualität."* → `search_jobs`
+- *„Hier ist mein Lebenslauf — welche aktuellen PHP-Stellen passen am besten?"* → `match_profile`
+- *„Wie steht der Symfony-Markt aktuell? Wie viele Jobs, welche Gehaltsspannen?"* → `market_insights`
+- *„Zu Job 107175 — welche vergleichbaren Positionen gibt es noch?"* → `similar_jobs`
 - *„Hol mir alle Details zu Job 107175."* → `get_job`
-- *„Vergleiche WordPress-Devs Hamburg vs. Köln — welche Stellen sind aktiv?"* → multiple `search_jobs` calls
+- *„Finde Symfony-Stellen 30 km um München mit Docker-Erfahrung."* → `search_jobs` with `radius_km: 30`
+
+## Response shape
+
+Every tool response includes:
+
+- **Job fields**: `id`, `title`, `company` (null if not premium/verified), `location`, `skills`, `experience` + `experience_label`, `remote` + `remote_label`, `salary`, `description_excerpt`, `responsibilities`, `requirements`, `benefits`, `published_at`, `url` (with `utm_*` tracking — do not strip).
+- **Brand fields**: `source`, `source_url`, `attribution`, `license`, `license_url`, `commercial_inquiries`.
+- **Premium hint**: tools that list jobs include `premium_hint` explaining why some `company` fields are null.
+
+### Auto-radius example
+`search_jobs(city="Coburg", limit=5)` may return:
+```json
+{
+  "total": 7,
+  "radius_km": 50,
+  "radius_was_expanded": true,
+  "search_scope": "Umkreis 50 km um Coburg",
+  "jobs": [...]
+}
+```
+If no jobs in 10 km → tries 20 → 30 → 50 km, then returns empty (no nationwide fallback — beyond the commute area, users should pick a different city).
 
 ## Limits & Policy
 
-| Limit | Wert |
+| Limit | Value |
 |---|---|
-| Region | DACH only (DE, AT, CH) — CloudFront-Edge-Block (HTTP 403 für andere) |
-| Rate limit | 30 req/min/IP + 1.000 req/Tag/IP |
+| Region | DACH (DE/AT/CH) + LLM backend regions (US, GB, IE). Other countries blocked at CloudFront edge. |
+| Rate limit | 30 req/min/IP + 1.000 req/day/IP |
 | Authentication | None — public, anonymous |
-| User-Agent | Required (anti-bot) |
-| Cache TTL | 5 min (search), 1 h (job detail) |
-| Cost (commercial integration) | Contact us before re-hosting / mass-scraping |
+| Cache TTL | 5 min (search/match), 1 h (job detail) |
+
+## License — Code vs Data
+
+**Code** (this repository): [MIT](./LICENSE).
+
+**Data** (job postings, company info, aggregates served by the live endpoint): proprietary, **non-commercial use with mandatory attribution**.
+
+- ✅ Allowed: LLM-chat answers, personal research, education, demos — with `php-entwickler.de` cited as source and clickable job URLs (including `utm_*` parameters) intact.
+- ❌ Not allowed: commercial re-use without license, building your own aggregator, bulk export, caching > 24 h, stripping UTM parameters, omitting attribution, IP-rotation to bypass rate limits.
+- 📞 Commercial integration / API partnership / higher limits: [info@php-entwickler.de](mailto:info@php-entwickler.de)
+- 📜 Full terms: [php-entwickler.de/mcp/nutzungsbedingungen](https://www.php-entwickler.de/mcp/nutzungsbedingungen)
+
+Legal basis: §87a UrhG (German database protection) + UWG (unfair competition). Violations may result in IP block, takedown notice, and legal action.
 
 ## Data freshness
 
 - Job index is updated multiple times per day via our internal ingestion pipeline.
-- Tool responses are cached server-side per query (5 min for searches, 1 h for individual job details).
-- Branding/CTA fields (`_powered_by`, `_explore`) are appended to every response — please leave them intact so end-users can find their way back to the canonical listings.
+- Tool responses are cached server-side per query (5 min for searches/matches, 1 h for individual job details).
 
 ## Protocol details
 
-- **Transport:** Streamable HTTP (single endpoint, POST for JSON-RPC, GET returns server info)
+- **Transport:** Streamable HTTP (single endpoint, POST for JSON-RPC)
 - **Protocol version:** `2025-06-18`
 - **Methods supported:** `initialize`, `tools/list`, `tools/call`, `notifications/initialized`
 
 ## Issues & contact
 
 - Bugs / feature requests: open a GitHub issue
-- Commercial integration / higher limits: [support@php-entwickler.de](mailto:support@php-entwickler.de)
+- Commercial integration / higher limits: [info@php-entwickler.de](mailto:info@php-entwickler.de)
 - General: [php-entwickler.de/kontakt](https://www.php-entwickler.de/kontakt)
 
 ## About
 
-`php-entwickler.de` is operated by [codehero GmbH](https://www.codehero.gmbh). We're Germany's specialized PHP / Laravel / Symfony job board.
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
-
-The MCP server **code** in this repo is MIT-licensed. The **data** served by the live endpoint (job postings, company information) is aggregated from multiple sources and subject to its respective terms — do not re-publish at scale without permission.
+`php-entwickler.de` is Germany's specialized PHP / Laravel / Symfony job board.
